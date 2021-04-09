@@ -4,7 +4,7 @@ from pathlib import Path
 from dotenv import load_dotenv
 from flask import Flask, request, Response
 from slackeventsapi import SlackEventAdapter
-
+import string
 
 env_path = Path('.') / '.env'
 load_dotenv(dotenv_path=env_path)
@@ -17,6 +17,8 @@ BOT_ID = client.api_call("auth.test")['user_id']
 
 message_counts = {}
 welcome_messages = {}
+
+BAD_WORDS = ['idiot', 'shut up', 'fuck', 'bullshit', 'shit', 'asshole']
 
 class WelcomeMessage:
     START_TEXT = {
@@ -62,14 +64,25 @@ class WelcomeMessage:
         return {'type': 'section', 'text': {'type': 'mrkdwn', 'text': text}}
 
 def send_welcome_message(channel, user):
+    if channel not in welcome_messages:
+        welcome_messages[channel] = {}
+
+    if user in welcome_messages[channel]:
+        return
+
     welcome = WelcomeMessage(channel, user)
     message = welcome.get_message()
     response = client.chat_postMessage(**message)
     welcome.timestamp = response['ts']
 
-    if channel not in welcome_messages:
-        welcome_messages[channel] = {}
     welcome_messages[channel][user] = welcome
+
+
+def check_if_bad_words(message):
+    msg = message.lower()
+    msg.translate(str.maketrans('', '', string.punctuation))
+
+    return any(word in msg for word in BAD_WORDS)
 
 @slack_event_adapter.on('message')
 def message(payload):
@@ -86,6 +99,9 @@ def message(payload):
         
         if text.lower() == 'start':
             send_welcome_message(f'@{user_id}', user_id)
+        elif check_if_bad_words(text):
+            ts = event.get('ts')
+            client.chat_postMessage(channel=channel_id, thread_ts = ts, text="THAT IS A BAD WORD!")
 
 @slack_event_adapter.on('reaction_added')
 def reaction(payload):
