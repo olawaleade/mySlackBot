@@ -5,6 +5,8 @@ from dotenv import load_dotenv
 from flask import Flask, request, Response
 from slackeventsapi import SlackEventAdapter
 import string
+from datetime import datetime, timedelta
+import time
 
 env_path = Path('.') / '.env'
 load_dotenv(dotenv_path=env_path)
@@ -19,6 +21,12 @@ message_counts = {}
 welcome_messages = {}
 
 BAD_WORDS = ['idiot', 'shut up', 'fuck', 'bullshit', 'shit', 'asshole']
+
+SCHEDULED_MESSAGES = [
+    {'text': 'First message', 'post_at': (datetime.now() + timedelta(seconds=20)).timestamp(), 'channel': 'C01T59EH0HH'},
+    {'text': 'Second message!' , 'post_at': (datetime.now() + timedelta(seconds=30)).timestamp(), 'channel': 'C01T59EH0HH'}
+]
+
 
 class WelcomeMessage:
     START_TEXT = {
@@ -78,6 +86,35 @@ def send_welcome_message(channel, user):
     welcome_messages[channel][user] = welcome
 
 
+def list_scheduled_messages(channel):
+    response = client.chat_scheduledMessages_list(channel=channel)
+    messages = response.data.get('scheduled_messages')
+    ids = []
+    for msg in messages:
+        ids.append(msg.get('id'))
+
+    return ids
+
+def schedule_messages(messages):
+    ids = []
+    for msg in messages:
+        response = client.chat_scheduleMessage(
+            channel=msg['channel'], text=msg['text'], post_at=msg['post_at']).data
+        id_ = response.get('schedule_message_id')
+        ids.append(id_)
+
+    return ids
+
+def delete_scheduled_messages(ids, channel):
+    for _id in ids:
+        try:
+
+            client.chat_deleteScheduledMessage(
+                channel=channel, scheduled_message_id= _id)
+        except Exception as e:
+                print(e)
+
+
 def check_if_bad_words(message):
     msg = message.lower()
     msg.translate(str.maketrans('', '', string.punctuation))
@@ -132,4 +169,7 @@ def message_count():
     return Response(), 200
 
 if __name__ == "__main__":
+    schedule_messages(SCHEDULED_MESSAGES)
+    ids = list_scheduled_messages('C01T59EH0HH')
+    delete_scheduled_messages(ids, 'C01T59EH0HH')
     app.run(debug=True)
